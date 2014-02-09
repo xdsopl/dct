@@ -29,12 +29,37 @@ float linear(float v)
 	return v <= K0 ? v / phi : powf((v + a) / (1.0f + a), gamma);
 }
 
-struct rgb {
-	float r, g, b;
-};
+float fclampf(float x, float a, float b)
+{
+	return fminf(fmaxf(x, a), b);
+}
+
+void yuv2rgb(float *rgb, float *yuv)
+{
+	float WR = 0.2126f;
+	float WB = 0.0722f;
+	float WG = 1.0f - WR - WB;
+	float UMAX = 0.436f;
+	float VMAX = 0.615f;
+	rgb[0] = fclampf(yuv[0] + (1.0f - WR) / VMAX * yuv[2], 0.0f, 1.0f);
+	rgb[1] = fclampf(yuv[0] - WB * (1.0f - WB) / (UMAX * WG) * yuv[1] - WR * (1.0f - WR) / (VMAX * WG) * yuv[2], 0.0f, 1.0f);
+	rgb[2] = fclampf(yuv[0] + (1.0f - WB) / UMAX * yuv[1], 0.0f, 1.0f);
+}
+
+void rgb2yuv(float *yuv, float *rgb)
+{
+	float WR = 0.2126f;
+	float WB = 0.0722f;
+	float WG = 1.0f - WR - WB;
+	float UMAX = 0.436f;
+	float VMAX = 0.615f;
+	yuv[0] = fclampf(WR * rgb[0] + WG * rgb[1] + WB * rgb[2], 0.0f, 1.0f);
+	yuv[1] = fclampf(UMAX / (1.0f - WB) * (rgb[2] - yuv[0]), -UMAX, UMAX);
+	yuv[2] = fclampf(VMAX / (1.0f - WR) * (rgb[0] - yuv[0]), -VMAX, VMAX);
+}
 
 struct image {
-	struct rgb *buffer;
+	float *buffer;
 	int width, height, total;
 	char *name;
 };
@@ -52,7 +77,7 @@ struct image *new_image(char *name, int width, int height)
 	image->width = width;
 	image->total = width * height;
 	image->name = name;
-	image->buffer = malloc(sizeof(struct rgb) * width * height);
+	image->buffer = malloc(3 * sizeof(float) * width * height);
 	return image;
 }
 
@@ -105,13 +130,11 @@ struct image *read_ppm(char *name)
 		return 0;
 	}
 	image = new_image(name, integer[0], integer[1]);
-	for (int i = 0; i < image->total; i++) {
-		int r = fgetc(file);
-		int g = fgetc(file);
-		int b = fgetc(file);
-		if (EOF == r || EOF == g || EOF == b)
+	for (int i = 0; i < 3 * image->total; i++) {
+		int v = fgetc(file);
+		if (EOF == v)
 			goto eof;
-		image->buffer[i] = (struct rgb){ linear(r / 255.0f), linear(g / 255.0f), linear(b / 255.0f) };
+		image->buffer[i] = linear(v / 255.0f);
 	}
 	fclose(file);
 	return image;
@@ -134,12 +157,8 @@ int write_ppm(struct image *image)
 		fclose(file);
 		return 0;
 	}
-	for (int i = 0; i < image->total; i++) {
-		if (EOF == fputc(255.0f * srgb(image->buffer[i].r), file))
-			goto eof;
-		if (EOF == fputc(255.0f * srgb(image->buffer[i].g), file))
-			goto eof;
-		if (EOF == fputc(255.0f * srgb(image->buffer[i].b), file))
+	for (int i = 0; i < 3 * image->total; i++) {
+		if (EOF == fputc(255.0f * srgb(image->buffer[i]), file))
 			goto eof;
 	}
 	fclose(file);
@@ -150,42 +169,20 @@ eof:
 	return 0;
 }
 
-struct yuv {
-	float y, u, v;
-};
-
-float fclampf(float x, float a, float b)
+void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, int N, float f)
 {
-	return fminf(fmaxf(x, a), b);
-}
+	for (int i = 0; i < N * N; i++)
+		td[i] = io[3 * i];
 
-struct rgb yuv2rgb(struct yuv c)
-{
-	float WR = 0.2126f;
-	float WB = 0.0722f;
-	float WG = 1.0f - WR - WB;
-	float UMAX = 0.436f;
-	float VMAX = 0.615f;
-	return (struct rgb) {
-		fclampf(c.y + (1.0f - WR) / VMAX * c.v, 0.0f, 1.0f),
-		fclampf(c.y - WB * (1.0f - WB) / (UMAX * WG) * c.u - WR * (1.0f - WR) / (VMAX * WG) * c.v, 0.0f, 1.0f),
-		fclampf(c.y + (1.0f - WB) / UMAX * c.u, 0.0f, 1.0f)
-	};
-}
+	fftwf_execute(DCTII);
 
-struct yuv rgb2yuv(struct rgb c)
-{
-	float WR = 0.2126f;
-	float WB = 0.0722f;
-	float WG = 1.0f - WR - WB;
-	float UMAX = 0.436f;
-	float VMAX = 0.615f;
-	float y = WR * c.r + WG * c.g + WB * c.b;
-	return (struct yuv) {
-		fclampf(y, 0.0f, 1.0f),
-		fclampf(UMAX / (1.0f - WB) * (c.b - y), -UMAX, UMAX),
-		fclampf(VMAX / (1.0f - WR) * (c.r - y), -VMAX, VMAX),
-	};
+	for (int i = 0; i < N * N; i++)
+		fd[i] = roundf(f / (2.0f * N) * fd[i]) / f;
+
+	fftwf_execute(DCTIII);
+
+	for (int i = 0; i < N * N; i++)
+		io[3 * i] = td[i] / (2.0f * N);
 }
 
 void doit(struct image *output, struct image *input)
@@ -198,66 +195,26 @@ void doit(struct image *output, struct image *input)
 	int h = output->height;
 	int tw = w / N;
 	int th = h / N;
-	struct rgb *ob = output->buffer;
-	struct rgb *ib = input->buffer;
+	float *ob = output->buffer;
+	float *ib = input->buffer;
 	for (int tj = 0; tj < th; tj++) {
 		for (int ti = 0; ti < tw; ti++) {
-			struct yuv yuv[N * N];
+			float yuv[3 * N * N];
 			for (int j = 0; j < N; j++) {
 				for (int i = 0; i < N; i++) {
 					int idx = w * N * tj + w * j + N * ti + i;
-					yuv[N * j + i] = rgb2yuv(ib[idx]);
+					rgb2yuv(yuv + 3 * (N * j + i), ib + 3 * idx);
 				}
 			}
-			// Y
-			for (int i = 0; i < N * N; i++)
-				td[i] = yuv[i].y;
 
-			fftwf_execute(DCTII);
-
-			float yf = 64;
-			for (int i = 0; i < N * N; i++)
-				fd[i] = roundf(yf / (2.0f * N) * fd[i]) / yf;
-
-			fftwf_execute(DCTIII);
-
-			for (int i = 0; i < N * N; i++)
-				yuv[i].y = td[i] / (2.0f * N);
-
-			// U
-			for (int i = 0; i < N * N; i++)
-				td[i] = yuv[i].u;
-
-			fftwf_execute(DCTII);
-
-			float uf = 16;
-			for (int i = 0; i < N * N; i++)
-				fd[i] = roundf(uf / (2.0f * N) * fd[i]) / uf;
-
-			fftwf_execute(DCTIII);
-
-			for (int i = 0; i < N * N; i++)
-				yuv[i].u = td[i] / (2.0f * N);
-
-			// V
-			for (int i = 0; i < N * N; i++)
-				td[i] = yuv[i].v;
-
-			fftwf_execute(DCTII);
-
-			float vf = 16;
-			for (int i = 0; i < N * N; i++)
-				fd[i] = roundf(vf / (2.0f * N) * fd[i]) / vf;
-
-			fftwf_execute(DCTIII);
-
-			for (int i = 0; i < N * N; i++)
-				yuv[i].v = td[i] / (2.0f * N);
+			blah(DCTII, DCTIII, td, fd, yuv+0, N, 64);
+			blah(DCTII, DCTIII, td, fd, yuv+1, N, 16);
+			blah(DCTII, DCTIII, td, fd, yuv+2, N, 16);
 
 			for (int j = 0; j < N; j++) {
 				for (int i = 0; i < N; i++) {
 					int idx = w * N * tj + w * j + N * ti + i;
-					ob[idx] = yuv2rgb(yuv[N * j + i]);
+					yuv2rgb(ob + 3 * idx, yuv + 3 * (N * j + i));
 				}
 			}
 		}
