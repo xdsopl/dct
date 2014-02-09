@@ -216,6 +216,18 @@ void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, 
 		io[3 * i] = td[i];
 }
 
+void probe(float *t, int N, int i, int j, int pi, int pj)
+{
+	if (i != pi || j != pj)
+		return;
+	printf("\n");
+	for (int j = 0; j < N; j++) {
+		for (int i = 0; i < N; i++)
+			printf(" % 12.7f ", t[N * j + i]);
+		printf("\n");
+	}
+}
+
 void doit(struct image *output, struct image *input)
 {
 	int N = 8;
@@ -235,9 +247,14 @@ void doit(struct image *output, struct image *input)
 			for (int j = 0; j < N; j++)
 				memcpy(tile + 3 * N * j, ib + 3 * (N * (w * tj + ti) + w * j), 3 * sizeof(float) * N);
 
+			int pi = tw / 2 - 1;
+			int pj = th / 2 - 1;
 			blah(DCTII, DCTIII, td, fd, tile+0, N, 64);
+			probe(fd, N, ti, tj, pi, pj);
 			blah(DCTII, DCTIII, td, fd, tile+1, N, 16);
+			probe(fd, N, ti, tj, pi, pj);
 			blah(DCTII, DCTIII, td, fd, tile+2, N, 16);
+			probe(fd, N, ti, tj, pi, pj);
 
 			for (int j = 0; j < N; j++)
 				memcpy(ob + 3 * (N * (w * tj + ti) + w * j), tile + 3 * N * j, 3 * sizeof(float) * N);
