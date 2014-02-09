@@ -34,28 +34,30 @@ float fclampf(float x, float a, float b)
 	return fminf(fmaxf(x, a), b);
 }
 
-void yuv2rgb(float *rgb, float *yuv)
+void yuv2rgb(float *io)
 {
 	float WR = 0.2126f;
 	float WB = 0.0722f;
 	float WG = 1.0f - WR - WB;
 	float UMAX = 0.436f;
 	float VMAX = 0.615f;
-	rgb[0] = fclampf(yuv[0] + (1.0f - WR) / VMAX * yuv[2], 0.0f, 1.0f);
-	rgb[1] = fclampf(yuv[0] - WB * (1.0f - WB) / (UMAX * WG) * yuv[1] - WR * (1.0f - WR) / (VMAX * WG) * yuv[2], 0.0f, 1.0f);
-	rgb[2] = fclampf(yuv[0] + (1.0f - WB) / UMAX * yuv[1], 0.0f, 1.0f);
+	float y = io[0], u = io[1], v = io[2];
+	io[0] = fclampf(y + (1.0f - WR) / VMAX * v, 0.0f, 1.0f);
+	io[1] = fclampf(y - WB * (1.0f - WB) / (UMAX * WG) * u - WR * (1.0f - WR) / (VMAX * WG) * v, 0.0f, 1.0f);
+	io[2] = fclampf(y + (1.0f - WB) / UMAX * u, 0.0f, 1.0f);
 }
 
-void rgb2yuv(float *yuv, float *rgb)
+void rgb2yuv(float *io)
 {
 	float WR = 0.2126f;
 	float WB = 0.0722f;
 	float WG = 1.0f - WR - WB;
 	float UMAX = 0.436f;
 	float VMAX = 0.615f;
-	yuv[0] = fclampf(WR * rgb[0] + WG * rgb[1] + WB * rgb[2], 0.0f, 1.0f);
-	yuv[1] = fclampf(UMAX / (1.0f - WB) * (rgb[2] - yuv[0]), -UMAX, UMAX);
-	yuv[2] = fclampf(VMAX / (1.0f - WR) * (rgb[0] - yuv[0]), -VMAX, VMAX);
+	float r = io[0], g = io[1], b = io[2];
+	io[0] = fclampf(WR * r + WG * g + WB * b, 0.0f, 1.0f);
+	io[1] = fclampf(UMAX / (1.0f - WB) * (b - io[0]), -UMAX, UMAX);
+	io[2] = fclampf(VMAX / (1.0f - WR) * (r - io[0]), -VMAX, VMAX);
 }
 
 struct image {
@@ -79,6 +81,18 @@ struct image *new_image(char *name, int width, int height)
 	image->name = name;
 	image->buffer = malloc(3 * sizeof(float) * width * height);
 	return image;
+}
+
+void yuv_image(struct image *image)
+{
+	for (int i = 0; i < image->total; i++)
+		rgb2yuv(image->buffer + 3 * i);
+}
+
+void rgb_image(struct image *image)
+{
+	for (int i = 0; i < image->total; i++)
+		yuv2rgb(image->buffer + 3 * i);
 }
 
 struct image *read_ppm(char *name)
@@ -197,13 +211,14 @@ void doit(struct image *output, struct image *input)
 	int th = h / N;
 	float *ob = output->buffer;
 	float *ib = input->buffer;
+	yuv_image(input);
 	for (int tj = 0; tj < th; tj++) {
 		for (int ti = 0; ti < tw; ti++) {
 			float yuv[3 * N * N];
 			for (int j = 0; j < N; j++) {
 				for (int i = 0; i < N; i++) {
 					int idx = w * N * tj + w * j + N * ti + i;
-					rgb2yuv(yuv + 3 * (N * j + i), ib + 3 * idx);
+					memcpy(yuv + 3 * (N * j + i), ib + 3 * idx, 3 * sizeof(float));
 				}
 			}
 
@@ -214,11 +229,12 @@ void doit(struct image *output, struct image *input)
 			for (int j = 0; j < N; j++) {
 				for (int i = 0; i < N; i++) {
 					int idx = w * N * tj + w * j + N * ti + i;
-					yuv2rgb(ob + 3 * idx, yuv + 3 * (N * j + i));
+					memcpy(ob + 3 * idx, yuv + 3 * (N * j + i), 3 * sizeof(float));
 				}
 			}
 		}
 	}
+	rgb_image(output);
 }
 
 int main(int argc, char **argv)
