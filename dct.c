@@ -183,6 +183,11 @@ eof:
 	return 0;
 }
 
+float quantization(int i, int j, int N, float min, float max)
+{
+	return min + (max - min) * (2 * N - (i + j)) / (2.0f * N);
+}
+
 void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, int N, float f)
 {
 	for (int i = 0; i < N * N; i++)
@@ -191,12 +196,22 @@ void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, 
 	fftwf_execute(DCTII);
 
 	for (int i = 0; i < N * N; i++)
-		fd[i] = roundf(f / (2.0f * N) * fd[i]) / f;
+		fd[i] /= 2.0f * N;
+
+	for (int j = 0; j < N; j++) {
+		for (int i = 0; i < N; i++) {
+			float q = quantization(i, j, N, f / 5.0f, f);
+			fd[N * j + i] = roundf(q * fd[N * j + i]) / q;
+		}
+	}
 
 	fftwf_execute(DCTIII);
 
 	for (int i = 0; i < N * N; i++)
-		io[3 * i] = td[i] / (2.0f * N);
+		td[i] /= 2.0f * N;
+
+	for (int i = 0; i < N * N; i++)
+		io[3 * i] = td[i];
 }
 
 void doit(struct image *output, struct image *input)
