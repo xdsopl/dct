@@ -191,7 +191,7 @@ float quantization(int i, int j, int N, float min, float max)
 //	return min + (max - min) * (N * N - (i * j)) / (float)(N * N);
 }
 
-void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, int N, float f)
+void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, int N, float min, float max)
 {
 	for (int i = 0; i < N * N; i++)
 		td[i] = io[3 * i];
@@ -203,7 +203,7 @@ void blah(fftwf_plan DCTII, fftwf_plan DCTIII, float *td, float *fd, float *io, 
 
 	for (int j = 0; j < N; j++) {
 		for (int i = 0; i < N; i++) {
-			float q = quantization(i, j, N, f / 5.0f, f);
+			float q = quantization(i, j, N, min, max);
 			fd[N * j + i] = roundf(q * fd[N * j + i]) / q;
 		}
 	}
@@ -250,11 +250,11 @@ void doit(struct image *output, struct image *input)
 
 			int pi = tw / 2 - 1;
 			int pj = th / 2 - 1;
-			blah(DCTII, DCTIII, td, fd, tile+0, N, 64);
+			blah(DCTII, DCTIII, td, fd, tile+0, N, 16, 64);
 			probe(fd, N, ti, tj, pi, pj);
-			blah(DCTII, DCTIII, td, fd, tile+1, N, 16);
+			blah(DCTII, DCTIII, td, fd, tile+1, N, 4, 16);
 			probe(fd, N, ti, tj, pi, pj);
-			blah(DCTII, DCTIII, td, fd, tile+2, N, 16);
+			blah(DCTII, DCTIII, td, fd, tile+2, N, 4, 16);
 			probe(fd, N, ti, tj, pi, pj);
 
 			for (int j = 0; j < N; j++)
