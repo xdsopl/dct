@@ -185,6 +185,7 @@ eof:
 
 float quantization(int i, int j, int N, float min, float max)
 {
+	(void)N;
 	return min + (max - min) * powf(2.0f, - (i + j));
 //	return min + (max - min) * (2 * N - (i + j)) / (2.0f * N);
 //	return min + (max - min) * (N * N - (i * j)) / (float)(N * N);
