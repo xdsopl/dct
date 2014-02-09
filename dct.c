@@ -214,24 +214,16 @@ void doit(struct image *output, struct image *input)
 	yuv_image(input);
 	for (int tj = 0; tj < th; tj++) {
 		for (int ti = 0; ti < tw; ti++) {
-			float yuv[3 * N * N];
-			for (int j = 0; j < N; j++) {
-				for (int i = 0; i < N; i++) {
-					int idx = w * N * tj + w * j + N * ti + i;
-					memcpy(yuv + 3 * (N * j + i), ib + 3 * idx, 3 * sizeof(float));
-				}
-			}
+			float tile[3 * N * N];
+			for (int j = 0; j < N; j++)
+				memcpy(tile + 3 * N * j, ib + 3 * (N * (w * tj + ti) + w * j), 3 * sizeof(float) * N);
 
-			blah(DCTII, DCTIII, td, fd, yuv+0, N, 64);
-			blah(DCTII, DCTIII, td, fd, yuv+1, N, 16);
-			blah(DCTII, DCTIII, td, fd, yuv+2, N, 16);
+			blah(DCTII, DCTIII, td, fd, tile+0, N, 64);
+			blah(DCTII, DCTIII, td, fd, tile+1, N, 16);
+			blah(DCTII, DCTIII, td, fd, tile+2, N, 16);
 
-			for (int j = 0; j < N; j++) {
-				for (int i = 0; i < N; i++) {
-					int idx = w * N * tj + w * j + N * ti + i;
-					memcpy(ob + 3 * idx, yuv + 3 * (N * j + i), 3 * sizeof(float));
-				}
-			}
+			for (int j = 0; j < N; j++)
+				memcpy(ob + 3 * (N * (w * tj + ti) + w * j), tile + 3 * N * j, 3 * sizeof(float) * N);
 		}
 	}
 	rgb_image(output);
